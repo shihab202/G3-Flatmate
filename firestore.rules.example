@@ -1,0 +1,53 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function houseMember(houseId) {
+      return signedIn() && exists(/databases/$(database)/documents/houses/$(houseId)/members/$(request.auth.uid));
+    }
+
+    function houseAdmin(houseId) {
+      return houseMember(houseId) &&
+        get(/databases/$(database)/documents/houses/$(houseId)/members/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    match /houses/{houseId} {
+      allow read: if houseMember(houseId);
+      allow write: if houseAdmin(houseId);
+
+      match /members/{memberId} {
+        allow read: if houseMember(houseId);
+        allow write: if houseAdmin(houseId) || request.auth.uid == memberId;
+      }
+
+      match /months/{monthId} {
+        allow read: if houseMember(houseId);
+        allow write: if houseAdmin(houseId);
+
+        match /expenses/{expenseId} {
+          allow read: if houseMember(houseId);
+          allow create, update, delete: if houseAdmin(houseId);
+        }
+
+        match /presence/{memberId} {
+          allow read: if houseMember(houseId);
+          allow write: if houseAdmin(houseId) || request.auth.uid == memberId;
+        }
+
+        match /meals/{mealId} {
+          allow read: if houseMember(houseId);
+          allow write: if houseAdmin(houseId) || signedIn();
+        }
+
+        match /notifications/{notificationId} {
+          allow read: if houseMember(houseId);
+          allow create: if houseMember(houseId);
+          allow update, delete: if houseAdmin(houseId);
+        }
+      }
+    }
+  }
+}
